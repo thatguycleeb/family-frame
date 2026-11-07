@@ -22,7 +22,20 @@ import java.util.List;
  * own thread; the listener is called on the main thread, at most once per COOLDOWN_MS.
  */
 class MotionDetector {
-  interface Listener { void onMotion(); }
+  interface Listener {
+    void onMotion();
+    /** Auto-exposure is now locked; meanY is the frame brightness (0-255) at that moment. */
+    default void onExposureLocked(float meanY) {}
+    /** Average frame brightness (0-255), every LIGHT_MS, once exposure is locked. */
+    default void onLight(float meanY) {}
+  }
+
+  // Light metering: after the camera settles, auto-exposure is locked so frame brightness follows
+  // the room's light instead of being normalised by the camera.
+  static final long SETTLE_MS = 3000;
+  static final long LIGHT_MS = 2000;
+  private boolean exposureLocked;
+  private long openedAt, lastLight;
 
   static final int GRID_W = 16, GRID_H = 12;
   static final int CELL_DELTA = 14;          // brightness change (0-255) for a cell to count
@@ -105,11 +118,37 @@ class MotionDetector {
         }
       });
       camera.startPreview();
+      openedAt = SystemClock.elapsedRealtime();
+      exposureLocked = false;
       Log.i(MainActivity.TAG, "Motion detection on (camera " + id + ", " + width + "x" + height
           + ", " + minCells + " cells)");
     } catch (Exception e) {
       Log.w(MainActivity.TAG, "Motion detection unavailable: " + e);
       close();
+    }
+  }
+
+  private void lightTick(long now, final float mean) {
+    if (!exposureLocked) {
+      if (now - openedAt < SETTLE_MS || camera == null) return;
+      try {
+        Camera.Parameters p = camera.getParameters();
+        if (!p.isAutoExposureLockSupported()) return;
+        p.setAutoExposureLock(true);
+        camera.setParameters(p);
+        exposureLocked = true;
+        lastLight = now;
+        Log.i(MainActivity.TAG, "Exposure locked at brightness " + Math.round(mean));
+        main.post(() -> listener.onExposureLocked(mean));
+      } catch (Exception e) {
+        Log.w(MainActivity.TAG, "Could not lock exposure: " + e);
+        openedAt = now; // try again later
+      }
+      return;
+    }
+    if (now - lastLight >= LIGHT_MS) {
+      lastLight = now;
+      main.post(() -> listener.onLight(mean));
     }
   }
 
@@ -155,12 +194,20 @@ class MotionDetector {
     prev = grid;
     if (last == null) return;
 
+    long sum = 0;
+    for (int v : grid) sum += v;
+    float mean = sum / (float) grid.length;
+    lightTick(now, mean);
+
     int total = 0;
     for (int i = 0; i < grid.length; i++) total += grid[i] - last[i];
     int shift = total / grid.length; // frame-wide change: exposure / room light, not motion
+    // With exposure locked, a dim room gives a dark, low-contrast image: lower the threshold
+    // with the image brightness so motion still registers (but never below 5).
+    int delta = Math.max(5, Math.min(CELL_DELTA, Math.round(mean * 0.2f)));
     int changed = 0;
     for (int i = 0; i < grid.length; i++) {
-      if (Math.abs(grid[i] - last[i] - shift) > CELL_DELTA) changed++;
+      if (Math.abs(grid[i] - last[i] - shift) > delta) changed++;
     }
     if (changed >= minCells && now - lastMotion > COOLDOWN_MS) {
       lastMotion = now;

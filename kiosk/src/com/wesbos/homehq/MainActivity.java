@@ -140,6 +140,20 @@ public class MainActivity extends Activity {
   private long lastMotionLog;
   private final Runnable startSaver = this::showSaver;
   static final long REHIDE_BARS_MS = 2000;
+
+  // ── Adaptive brightness from the camera (the tablet has no light sensor) ──
+  // The camera's exposure is locked once it settles; frame brightness relative to a reference
+  // gives the room's light level (1.0 = the level when calibrated). Screen brightness follows it
+  // between light_min% and 100%. The reference is re-anchored each time the camera opens, assuming
+  // the room is at the last measured level; --ez calibrate_light true sets "now" as 100%.
+  //   ... --ez light_adaptive true --ei light_min 15 --ez calibrate_light true
+  static final String PREF_LIGHT = "light_adaptive";
+  static final String PREF_LIGHT_MIN = "light_min";
+  static final String PREF_LIGHT_LEVEL = "light_last_level";
+  private float lightRef = -1, lightLevel = -1;
+  private int appliedPercent = -1;
+  private boolean calibrateLight;
+  private long lastLevelSave;
   private final Runnable rehideBars = this::hideSystemUi;
 
   private final Runnable retry = new Runnable() {
@@ -1085,12 +1099,19 @@ public class MainActivity extends Activity {
     if (intent.hasExtra(PREF_SAVER_AFTER)) ed.putInt(PREF_SAVER_AFTER, Math.max(10, intent.getIntExtra(PREF_SAVER_AFTER, 120)));
     if (intent.hasExtra(PREF_MOTION)) ed.putBoolean(PREF_MOTION, intent.getBooleanExtra(PREF_MOTION, true));
     if (intent.hasExtra(PREF_MOTION_SENS)) ed.putInt(PREF_MOTION_SENS, intent.getIntExtra(PREF_MOTION_SENS, 60));
+    if (intent.hasExtra(PREF_LIGHT)) ed.putBoolean(PREF_LIGHT, intent.getBooleanExtra(PREF_LIGHT, true));
+    if (intent.hasExtra(PREF_LIGHT_MIN)) ed.putInt(PREF_LIGHT_MIN, Math.max(1, Math.min(100, intent.getIntExtra(PREF_LIGHT_MIN, 15))));
+    if (intent.getBooleanExtra("calibrate_light", false)) calibrateLight = true;
     ed.apply();
   }
 
   private void startMotion() {
     if (motion != null || !prefs().motion() || !MotionDetector.hasCamera()) return;
-    motion = new MotionDetector(prefs().sensitivity(), this::onMotion);
+    motion = new MotionDetector(prefs().sensitivity(), new MotionDetector.Listener() {
+      @Override public void onMotion() { MainActivity.this.onMotion(); }
+      @Override public void onExposureLocked(float y) { MainActivity.this.onExposureLocked(y); }
+      @Override public void onLight(float y) { MainActivity.this.onLight(y); }
+    });
     motion.start();
   }
 
@@ -1098,6 +1119,60 @@ public class MainActivity extends Activity {
     if (motion == null) return;
     motion.stop();
     motion = null;
+    saveLightLevel();
+    lightRef = -1; // re-anchored when the camera opens again
+  }
+
+  private boolean lightEnabled() {
+    return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_LIGHT, true);
+  }
+
+  private void onExposureLocked(float y) {
+    if (!lightEnabled()) return;
+    android.content.SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
+    float level = calibrateLight ? 1f : p.getFloat(PREF_LIGHT_LEVEL, 1f);
+    if (calibrateLight) Log.i(TAG, "Light calibrated: current room = 100%");
+    calibrateLight = false;
+    lightRef = Math.max(2f, y) / Math.max(0.05f, level);
+    lightLevel = level;
+    saveLightLevel();
+    updateBrightness();
+  }
+
+  private void onLight(float y) {
+    if (lightRef <= 0 || !lightEnabled()) return;
+    float level = Math.max(0f, Math.min(1f, y / lightRef));
+    // Smooth, so a person walking past the camera doesn't make the screen flicker.
+    lightLevel += 0.2f * (level - lightLevel);
+    updateBrightness();
+    long now = SystemClock.elapsedRealtime();
+    if (now - lastLevelSave > 60000) saveLightLevel();
+  }
+
+  private void saveLightLevel() {
+    if (lightLevel < 0) return;
+    lastLevelSave = SystemClock.elapsedRealtime();
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putFloat(PREF_LIGHT_LEVEL, lightLevel).apply();
+  }
+
+  /** Applies the current brightness: 0 while dimmed, else the light-based level (or Android's). */
+  private void updateBrightness() {
+    int percent;
+    if (dimmed) percent = 0;
+    else if (lightRef > 0 && lightEnabled()) {
+      int min = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(PREF_LIGHT_MIN, 15);
+      percent = Math.round(min + (100 - min) * lightLevel);
+    } else percent = -1; // Android's own brightness setting
+    if (percent == appliedPercent) return;
+    // Ignore tiny changes once adaptive brightness is running.
+    if (percent > 0 && appliedPercent > 0 && Math.abs(percent - appliedPercent) < 3) return;
+    if (percent >= 0 && percent != appliedPercent && !dimmed) {
+      Log.i(TAG, String.format(Locale.ROOT, "Light %d%% -> screen %d%%", Math.round(lightLevel * 100), percent));
+    }
+    appliedPercent = percent;
+    WindowManager.LayoutParams lp = getWindow().getAttributes();
+    lp.screenBrightness = percent < 0 ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : percent / 100f;
+    getWindow().setAttributes(lp);
   }
 
   private void onMotion() {
@@ -1139,9 +1214,7 @@ public class MainActivity extends Activity {
   private void setDim(boolean dim) {
     if (dim == dimmed) return;
     dimmed = dim;
-    WindowManager.LayoutParams lp = getWindow().getAttributes();
-    lp.screenBrightness = dim ? 0f : WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
-    getWindow().setAttributes(lp);
+    updateBrightness();
   }
 
   /** window.HomeHQ in both WebViews. */

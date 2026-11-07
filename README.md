@@ -97,6 +97,10 @@ adb shell am start -n com.wesbos.homehq/.MainActivity \
 ```
 
 - `motion_sensitivity` 1–100: higher reacts to smaller movement.
+- **Adaptive brightness** (the tablet has no light sensor, so the front camera is used as a light
+  meter): `--ez calibrate_light true` sets the current room light as 100%; screen brightness then
+  follows the room between `--ei light_min 15` (%) and 100%. `--ez light_adaptive false` turns it
+  off. The camera's exposure is locked for this, so motion detection is less sensitive in a dark room.
 - `--ez motion false` turns the camera off; `--es screensaver_url ""` turns the screensaver off.
 - Hold two fingers on the screen for 1.5 s for the kiosk menu (settings, Wi-Fi, reload).
 - Log in to Home Assistant once in the app (it keeps its own cookies) and tick *Keep me logged in*.
