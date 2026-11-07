@@ -5,7 +5,7 @@ An old Android tablet as a family wall display, driven by Home Assistant:
 - **Home Assistant dashboard** full screen, in a small kiosk app.
 - After a couple of minutes idle, a **photo slideshow** (with clock) from an **iCloud shared album**.
 - After a few more minutes, the screen **goes black** and the backlight drops to minimum.
-- The tablet's **front camera detects motion** and brings the photos back; a tap returns to the dashboard.
+- While the slideshow is up, the tablet's **front camera detects motion**: it keeps the photos on and wakes them from black. A tap returns to the dashboard. (Motion never starts the slideshow early or delays it; only touches count on the dashboard.)
 - A separate **calendar + weather page** for a relative's frame (same page, without `?view=slideshow`).
 
 Built and tested on a Vodacom Power Tab 10 (Android 5.1, MediaTek MT8321, 1 GB RAM), but the

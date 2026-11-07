@@ -125,8 +125,9 @@ public class MainActivity extends Activity {
   // ── Screensaver + motion (added for the family frame) ──
   // After screensaver_after seconds without a touch or motion, a second WebView shows
   // screensaver_url over the dashboard (which stays loaded underneath). A tap closes it.
-  // Camera motion keeps the dashboard awake, and wakes the screensaver page (frameWake) when it
-  // has gone dark. Pages can call HomeHQ.dim(true/false) to drop the backlight while black.
+  // Only touches count toward starting the screensaver. Camera motion is used only while it is
+  // showing: it keeps the slideshow from going black, and wakes it (frameWake) when it has.
+  // Pages can call HomeHQ.dim(true/false) to drop the backlight while black.
   //   adb shell am start -n com.wesbos.homehq/.MainActivity --es screensaver_url <url>
   //   ... --ei screensaver_after 120 --ez motion true --ei motion_sensitivity 60
   static final String PREF_SAVER_URL = "screensaver_url";
@@ -1102,13 +1103,11 @@ public class MainActivity extends Activity {
   private void onMotion() {
     long now = SystemClock.elapsedRealtime();
     if (now - lastMotionLog > 30000) { lastMotionLog = now; Log.i(TAG, "Motion"); }
-    if (saver.getVisibility() == View.VISIBLE) {
-      // Let the screensaver page decide what to do (wake from black, restart its timer).
-      if (dimmed) setDim(false);
-      saver.evaluateJavascript("window.frameWake && frameWake(true)", null);
-    } else {
-      resetIdle();
-    }
+    // Motion only matters during the screensaver: it keeps the slideshow from going black and
+    // wakes it when it has. On the dashboard, only touches count toward the screensaver timer.
+    if (saver.getVisibility() != View.VISIBLE) return;
+    if (dimmed) setDim(false);
+    saver.evaluateJavascript("window.frameWake && frameWake(true)", null);
   }
 
   private void resetIdle() {
