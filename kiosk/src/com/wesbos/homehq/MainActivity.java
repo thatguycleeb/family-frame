@@ -138,6 +138,8 @@ public class MainActivity extends Activity {
   private boolean dimmed;
   private long lastMotionLog;
   private final Runnable startSaver = this::showSaver;
+  static final long REHIDE_BARS_MS = 2000;
+  private final Runnable rehideBars = this::hideSystemUi;
 
   private final Runnable retry = new Runnable() {
     @Override
@@ -335,6 +337,14 @@ public class MainActivity extends Activity {
     root.addView(saver, new FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
     applySaverFlags(getIntent());
+    // Android clears the hide-navigation/fullscreen bits on the first touch, a keyboard or a dialog,
+    // and older versions (seen on Android 5.1) don't put them back for IMMERSIVE_STICKY. Whenever
+    // the bars come back, hide them again shortly after.
+    getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(vis -> {
+      if ((vis & (View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN)) != 0) return;
+      handler.removeCallbacks(rehideBars);
+      handler.postDelayed(rehideBars, REHIDE_BARS_MS);
+    });
     menuButton = new Button(this);
     menuButton.setText("Menu");
     menuButton.setAllCaps(false);
@@ -372,6 +382,7 @@ public class MainActivity extends Activity {
     saver.onResume();
     startMotion();
     resetIdle();
+    hideSystemUi();
     NavigationService.setDashboardVisible(true);
     if (portalMode) {
       handler.removeCallbacks(portalCheck);
@@ -1113,6 +1124,7 @@ public class MainActivity extends Activity {
     Log.i(TAG, "Screensaver on");
     saver.loadUrl(url);
     saver.setVisibility(View.VISIBLE);
+    hideSystemUi();
   }
 
   private void hideSaver() {
@@ -1121,6 +1133,7 @@ public class MainActivity extends Activity {
     saver.setVisibility(View.GONE);
     saver.loadUrl("about:blank");
     resetIdle();
+    hideSystemUi();
   }
 
   /** Backlight to minimum (0 turns it fully off on many panels) while a page shows black. */
