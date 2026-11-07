@@ -1,0 +1,4 @@
+# Add to /config/configuration.yaml (needs one Home Assistant restart).
+# `args` lets the script/button pass --icloud; the hourly run passes nothing.
+shell_command:
+  frame_sync: "python3 /config/frame-sync/sync.py {{ args | default('') }}"

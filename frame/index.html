@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Family Frame</title>
+<style>
+  /* Written for old browsers (Android 5.1 / Chrome 43): flexbox, no grid, no ES6. */
+  html, body { margin:0; padding:0; height:100%; background:#10141a; color:#f2f5f8;
+    font-family: Roboto, "Droid Sans", Arial, sans-serif; overflow:hidden; }
+  body { -webkit-user-select:none; user-select:none; }
+  #main { position:absolute; top:0; left:0; right:0; bottom:0; padding:2.2vmin; box-sizing:border-box;
+    display:-webkit-flex; display:flex; }
+  .panel { background:#1a212b; border-radius:2.2vmin; padding:3vmin; box-sizing:border-box; overflow:hidden; }
+  #left { width:38%; margin-right:2vmin; display:-webkit-flex; display:flex;
+    -webkit-flex-direction:column; flex-direction:column; }
+  #agenda { -webkit-flex:1; flex:1; min-width:0; }
+
+  #clock { font-size:11vmin; font-weight:bold; line-height:1; }
+  #date { font-size:3.4vmin; color:#9aa7b5; margin-top:1vmin; }
+  #wx-now { margin-top:auto; display:-webkit-flex; display:flex; -webkit-align-items:center; align-items:center; }
+  #wx-icon { font-size:11vmin; line-height:1; width:14vmin; text-align:center; margin-right:1.5vmin; color:#ffb454; }
+  #wx-temp { font-size:9vmin; font-weight:bold; line-height:1; }
+  #wx-desc { font-size:3vmin; color:#9aa7b5; margin-top:.6vmin; }
+  #wx-days { display:-webkit-flex; display:flex; margin-top:2vmin; }
+  .wx-day { -webkit-flex:1; flex:1; text-align:center; font-size:2.5vmin; color:#9aa7b5; }
+  .wx-day b { display:block; font-size:4.6vmin; font-weight:normal; color:#ffb454; margin:.4vmin 0; }
+  .wx-day span { color:#f2f5f8; }
+
+  #agenda h2 { margin:0 0 2vmin; font-size:2.8vmin; color:#9aa7b5; font-weight:bold;
+    letter-spacing:.08em; text-transform:uppercase; }
+  .day { margin-bottom:2.2vmin; }
+  .day-h { font-size:3.3vmin; font-weight:bold; color:#ffb454; margin-bottom:.6vmin; }
+  .ev { font-size:3.8vmin; padding:.6vmin 0; line-height:1.15; display:-webkit-flex; display:flex; }
+  .ev .t { color:#9aa7b5; width:17vmin; -webkit-flex:none; flex:none; }
+  .ev .n { -webkit-flex:1; flex:1; min-width:0; }
+  .empty { font-size:3.8vmin; color:#9aa7b5; }
+
+  #show { position:fixed; top:0; left:0; right:0; bottom:0; background:#000; opacity:0;
+    visibility:hidden; -webkit-transition:opacity .8s, visibility 0s .8s; transition:opacity .8s, visibility 0s .8s; z-index:10; }
+  #show.on { opacity:1; visibility:visible; -webkit-transition:opacity .8s; transition:opacity .8s; }
+  .slide { position:absolute; top:0; left:0; right:0; bottom:0; background-size:cover; background-position:center;
+    opacity:0; -webkit-transition:opacity 1.6s ease; transition:opacity 1.6s ease; }
+  .slide.vis { opacity:1; }
+  #sclock { position:absolute; left:3vmin; bottom:2.5vmin; font-size:7vmin; font-weight:bold; z-index:2;
+    text-shadow:0 0 2vmin rgba(0,0,0,.9); }
+  #sclock small { display:block; font-size:2.8vmin; font-weight:normal; }
+  /* Black-out after a longer idle period: hides everything so the screen is dark (see ?black=). */
+  #blackout { position:fixed; top:0; left:0; right:0; bottom:0; background:#000; z-index:20; display:none; cursor:none; }
+  #blackout.on { display:block; }
+  #nophotos { position:absolute; top:0; left:0; right:0; bottom:0; display:none; color:#9aa7b5; font-size:4vmin;
+    -webkit-align-items:center; align-items:center; -webkit-justify-content:center; justify-content:center; }
+
+  @media (max-aspect-ratio: 1/1) {
+    #main { -webkit-flex-direction:column; flex-direction:column; }
+    #left { width:auto; margin:0 0 2vmin 0; }
+  }
+</style>
+</head>
+<body>
+<!--
+  URL options:
+    index.html                  calendar + weather; photo slideshow after idle
+    index.html?view=slideshow   slideshow only (use as a screensaver URL)
+    ?idle=120   seconds without touch before the slideshow starts
+    ?slide=12   seconds per photo
+    ?black=5    minutes without touch/motion before the screen goes black (0 = never)
+    ?screenoff=1  when going black, also turn the backlight off (Fully Kiosk only)
+  Wakes on touch, and on camera motion when running in the family-frame kiosk app
+  (~/photo-frame/kiosk, calls frameWake) or Fully Kiosk (motion + JavaScript interface on).
+-->
+<div id="main">
+  <div class="panel" id="left">
+    <div><div id="clock">--:--</div><div id="date"></div></div>
+    <div id="wx-now"><div id="wx-icon"></div><div><div id="wx-temp"></div><div id="wx-desc"></div></div></div>
+    <div id="wx-days"></div>
+  </div>
+  <div class="panel" id="agenda"><h2>Coming up</h2><div id="events"></div></div>
+</div>
+
+<div id="show">
+  <div class="slide" id="s0"></div><div class="slide" id="s1"></div>
+  <div id="nophotos">No photos yet</div>
+  <div id="sclock"></div>
+</div>
+<div id="blackout"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var params = {};
+  location.search.replace(/^\?/, '').split('&').forEach(function (kv) {
+    if (!kv) return; var p = kv.split('='); params[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || '');
+  });
+  var IDLE = (+params.idle || 120) * 1000;
+  var SLIDE_MS = (+params.slide || 12) * 1000;
+  var SLIDESHOW_ONLY = params.view === 'slideshow';
+
+  function get(url, cb) {
+    var x = new XMLHttpRequest();
+    x.open('GET', url + (url.indexOf('?') < 0 ? '?' : '&') + '_=' + new Date().getTime(), true);
+    x.timeout = 20000;
+    x.onload = function () {
+      if (x.status !== 200) return cb(new Error('HTTP ' + x.status));
+      try { cb(null, JSON.parse(x.responseText)); } catch (e) { cb(e); }
+    };
+    x.onerror = x.ontimeout = function () { cb(new Error('network')); };
+    x.send();
+  }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  // Parse "YYYY-MM-DD" as a LOCAL date (old browsers treat it as UTC).
+  function parseDate(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  // Parse ISO date-times that carry an offset/Z (safe everywhere) or a naive one (treated as local).
+  function parseDT(s) {
+    if (/(Z|[+-]\d\d:?\d\d)$/.test(s)) return new Date(s);
+    var m = s.match(/^(\d+)-(\d+)-(\d+)T(\d+):(\d+)(?::(\d+))?/);
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  }
+
+  /* ── clock ── */
+  function tick() {
+    var n = new Date(), hm = pad(n.getHours()) + ':' + pad(n.getMinutes());
+    var d = DAYS[n.getDay()] + ', ' + n.getDate() + ' ' + MONTHS[n.getMonth()];
+    $('clock').textContent = hm; $('date').textContent = d;
+    $('sclock').innerHTML = hm + '<small>' + d + '</small>';
+  }
+  setInterval(tick, 1000); tick();
+
+  /* ── weather (written by sync.py from your HA weather entity) ── */
+  var WX = {
+    'sunny': ['☀', 'Sunny'], 'clear-night': ['☾', 'Clear'],
+    'partlycloudy': ['⛅', 'Partly cloudy'], 'cloudy': ['☁', 'Cloudy'],
+    'rainy': ['☔', 'Rain'], 'pouring': ['☔', 'Heavy rain'],
+    'snowy': ['❄', 'Snow'], 'snowy-rainy': ['❄', 'Sleet'], 'hail': ['❄', 'Hail'],
+    'fog': ['≈', 'Fog'], 'windy': ['≈', 'Windy'], 'windy-variant': ['≈', 'Windy'],
+    'lightning': ['⚡', 'Storm'], 'lightning-rainy': ['⚡', 'Thunderstorms'],
+    'exceptional': ['!', 'Unusual weather']
+  };
+  function wx(c) { return WX[c] || ['☁', c || '']; }
+  function weather() {
+    get('weather.json', function (err, w) {
+      if (err) return;
+      var cur = wx(w.condition);
+      $('wx-icon').textContent = cur[0]; $('wx-desc').textContent = cur[1];
+      $('wx-temp').textContent = Math.round(w.temperature) + '°';
+      var html = '';
+      (w.forecast || []).slice(0, 5).forEach(function (f) {
+        var d = DAYS[parseDT(f.datetime).getDay()].slice(0, 3);
+        html += '<div class="wx-day">' + d + '<b>' + wx(f.condition)[0] + '</b><span>' + Math.round(f.temperature) + '°</span></div>';
+      });
+      $('wx-days').innerHTML = html;
+    });
+  }
+  weather(); setInterval(weather, 15 * 60 * 1000);
+
+  /* ── calendar ── */
+  function dayLabel(d) {
+    var t = new Date(); t.setHours(0, 0, 0, 0);
+    var diff = Math.round((d - t) / 864e5);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
+  }
+  function events() {
+    get('events.json', function (err, j) {
+      if (err) { $('events').innerHTML = '<div class="empty">Calendar unavailable</div>'; return; }
+      var now = new Date(), days = {}, keys = [];
+      j.events.forEach(function (e) {
+        var s = e.allDay ? parseDate(e.start) : parseDT(e.start);
+        var end = e.allDay ? parseDate(e.end) : parseDT(e.end);
+        if (end < now) return;
+        var day = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+        if (day < new Date(now.getFullYear(), now.getMonth(), now.getDate())) day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        var k = day.getTime();
+        if (!days[k]) { days[k] = []; keys.push(k); }
+        days[k].push({ title: e.title, allDay: e.allDay, s: s });
+      });
+      keys.sort(function (a, b) { return a - b; });
+      var html = '';
+      keys.slice(0, 5).forEach(function (k) {
+        html += '<div class="day"><div class="day-h">' + dayLabel(new Date(k)) + '</div>';
+        days[k].forEach(function (e) {
+          html += '<div class="ev"><span class="t">' + (e.allDay ? 'All day' : pad(e.s.getHours()) + ':' + pad(e.s.getMinutes())) +
+            '</span><span class="n">' + esc(e.title) + '</span></div>';
+        });
+        html += '</div>';
+      });
+      $('events').innerHTML = html || '<div class="empty">Nothing planned. Enjoy the day!</div>';
+    });
+  }
+  events(); setInterval(events, 5 * 60 * 1000);
+
+  /* ── slideshow ── */
+  var photos = [], idx = 0, cur = 0, timer = null;
+  function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function loadPhotos(cb) {
+    get('photos.json', function (err, list) {
+      if (!err) photos = shuffle(list);
+      $('nophotos').style.display = photos.length ? 'none' : 'flex';
+      if (cb) cb();
+    });
+  }
+  function next() {
+    if (!photos.length) return;
+    var url = 'photos/' + encodeURIComponent(photos[idx++ % photos.length]);
+    var img = new Image();
+    img.onload = function () {
+      var incoming = $('s' + (1 - cur)), outgoing = $('s' + cur);
+      incoming.style.backgroundImage = 'url("' + url + '")';
+      incoming.className = 'slide vis'; outgoing.className = 'slide';
+      cur = 1 - cur;
+    };
+    img.src = url;
+  }
+  function startShow() {
+    loadPhotos(function () {
+      $('show').className = 'on'; next();
+      clearInterval(timer); timer = setInterval(next, SLIDE_MS);
+    });
+  }
+  function stopShow() { $('show').className = ''; clearInterval(timer); }
+
+  /* ── idle handling: calendar → slideshow (IDLE) → black (BLACK) ── */
+  var BLACK_MS = (params.black === undefined ? 5 : +params.black) * 60 * 1000;
+  var idleT, blackT, dark = false;
+  function goBlack() {
+    dark = true; $('blackout').className = 'on'; stopShow();
+    // In the family-frame kiosk app: drop the backlight while black (motion brings it back).
+    if (window.HomeHQ && HomeHQ.dim) { try { HomeHQ.dim(true); } catch (e) {} }
+    // ?screenoff=1: also switch the backlight off via Fully Kiosk. Only use this once Fully's
+    // motion detection is working, or the screen can only be woken with the power button.
+    if (params.screenoff === '1' && window.fully && fully.turnScreenOff) { try { fully.turnScreenOff(true); } catch (e) {} }
+  }
+  function arm() {
+    clearTimeout(idleT); clearTimeout(blackT);
+    if (!SLIDESHOW_ONLY) idleT = setTimeout(startShow, IDLE);
+    if (BLACK_MS > 0) blackT = setTimeout(goBlack, BLACK_MS);
+  }
+  // Activity (touch, or motion reported by Fully Kiosk): wake up and restart the timers.
+  function wake(fromMotion) {
+    if (dark) {
+      dark = false; $('blackout').className = '';
+      if (window.HomeHQ && HomeHQ.dim) { try { HomeHQ.dim(false); } catch (e) {} }
+      if (SLIDESHOW_ONLY) startShow();
+    } else if (!SLIDESHOW_ONLY && !fromMotion) {
+      stopShow(); // a touch during the slideshow returns to the calendar
+    }
+    arm();
+  }
+  window.frameWake = wake;
+  ['touchstart', 'mousedown', 'keydown'].forEach(function (ev) {
+    document.addEventListener(ev, function () { wake(false); }, false);
+  });
+  if (window.fully && fully.bind) {
+    try { fully.bind('onMotion', 'frameWake(true)'); fully.bind('screenOn', 'frameWake(true)'); } catch (e) {}
+  }
+  if (SLIDESHOW_ONLY) startShow();
+  arm();
+  setInterval(function () { loadPhotos(); }, 60 * 60 * 1000);
+
+  /* Reload nightly to pick up page updates and free memory on a slow tablet. */
+  setTimeout(function () { location.reload(); }, 24 * 60 * 60 * 1000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Add to /config/automations.yaml (or paste each into a new automation's YAML editor).
+- alias: Family frame - hourly refresh
+  description: Refreshes the frame's calendar, weather and photo list every hour.
+  triggers:
+  - trigger: time_pattern
+    minutes: '5'
+  - trigger: homeassistant
+    event: start
+  actions:
+  - action: shell_command.frame_sync
+  mode: single
+
+- alias: Family frame - weekly iCloud sync
+  description: Pulls new photos from the iCloud album once a week (Sunday 03:00).
+  triggers:
+  - trigger: time
+    at: '03:00:00'
+    weekday: sun
+  actions:
+  - action: script.refresh_family_frame
+  mode: single
+
+# Optional
+- alias: Weekly Home Assistant restart
+  description: Restarts Home Assistant every Monday at 01:00.
+  triggers:
+  - trigger: time
+    at: '01:00:00'
+    weekday: mon
+  actions:
+  - action: homeassistant.restart
+  mode: single

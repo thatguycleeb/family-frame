@@ -1,0 +1,11 @@
+# Add to /config/scripts.yaml, then reload scripts. Shows up as a "Run" button
+# (assign it to an area such as Office in the UI to see it on that area's dashboard).
+refresh_family_frame:
+  alias: Refresh family frame
+  icon: mdi:image-refresh
+  description: Pulls new photos from the iCloud album, then refreshes the photo list, calendar and weather.
+  sequence:
+  - action: shell_command.frame_sync
+    data:
+      args: --icloud
+  mode: single

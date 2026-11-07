@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Targeting SDK 24+ stops trusting user-installed CAs by default. Keep the Android 6 behaviour,
+     so a root CA added to the user store (for frames whose system store lacks ISRG Root X1)
+     still works on Android 7 and up. Cleartext stays allowed, as usesCleartextTraffic says. -->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true">
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

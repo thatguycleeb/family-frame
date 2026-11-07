@@ -1,0 +1,4 @@
+config.json
+kiosk/build/
+__pycache__/
+*.pyc

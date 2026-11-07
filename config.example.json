@@ -1,0 +1,11 @@
+{
+  "out_dir": "/config/www/frame",
+  "icloud_album": "https://photos.icloud.com/shared/album/YOUR_ALBUM_KEY",
+  "ha_url": "http://127.0.0.1:8123",
+  "ha_token": "PASTE_A_LONG_LIVED_ACCESS_TOKEN",
+  "calendars": [
+    "calendar.your_family_calendar"
+  ],
+  "weather": "weather.forecast_home",
+  "days_ahead": 30
+}
