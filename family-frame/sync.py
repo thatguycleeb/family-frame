@@ -7,14 +7,43 @@ Writes into out_dir (served by HA at /local/frame/):
   events.json    upcoming events from the configured HA calendars
   weather.json   current weather + 5-day forecast from the HA weather entity
 
-Standard library only, so it runs inside the HAOS core container via shell_command.
-Config: config.json next to this script (see config.example.json).
+  settings.json  slideshow defaults (idle / slide / black) for the frame page
+
+Standard library only. Two ways to run it:
+  * As the "Family Frame" Home Assistant add-on (options in /data/options.json, talks to Home
+    Assistant through the Supervisor, loops forever with --daemon).
+  * Standalone, e.g. from a shell_command: config.json next to this script (see
+    config.example.json); pass --icloud to also download the iCloud album.
 """
-import json, os, re, sys, urllib.request, urllib.parse
+import json, os, re, shutil, sys, time, urllib.request, urllib.parse
 from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CFG = json.load(open(os.path.join(HERE, "config.json")))
+OPTIONS = "/data/options.json"  # present only when running as an add-on
+ADDON = os.path.exists(OPTIONS)
+
+
+def load_config():
+    if ADDON:
+        o = json.load(open(OPTIONS))
+        return {
+            "out_dir": "/config/www/" + (o.get("frame_folder") or "frame").strip("/"),
+            "icloud_album": (o.get("icloud_album") or "").strip(),
+            "ha_url": "http://supervisor/core",
+            "ha_token": os.environ.get("SUPERVISOR_TOKEN", ""),
+            "calendars": [c for c in o.get("calendars", []) if c],
+            "weather": (o.get("weather") or "").strip(),
+            "days_ahead": o.get("days_ahead", 30),
+            "refresh_minutes": o.get("refresh_minutes", 60),
+            "icloud_hours": o.get("icloud_hours", 24),
+            "idle": o.get("idle_seconds", 120),
+            "slide": o.get("slide_seconds", 12),
+            "black": o.get("black_minutes", 5),
+        }
+    return json.load(open(os.path.join(HERE, "config.json")))
+
+
+CFG = load_config()
 OUT = CFG["out_dir"]
 PHOTOS = os.path.join(OUT, "photos")
 os.makedirs(PHOTOS, exist_ok=True)
@@ -164,6 +193,10 @@ def sync_photos():
 
 
 def sync_events():
+    if not CFG.get("calendars"):
+        write_json("events.json", {"updated": datetime.now(timezone.utc).isoformat(), "events": []})
+        print("events: no calendars configured")
+        return
     now = datetime.now(timezone.utc)
     qs = urllib.parse.urlencode({
         "start": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -184,7 +217,11 @@ def sync_events():
 
 
 def sync_weather():
-    entity = CFG["weather"]
+    entity = CFG.get("weather")
+    if not entity:
+        write_json("weather.json", {})
+        print("weather: no entity configured")
+        return
     st = ha_request(f"/api/states/{entity}")
     fc = ha_request("/api/services/weather/get_forecasts?return_response",
                     {"entity_id": entity, "type": "daily"})["service_response"][entity]["forecast"]
@@ -197,15 +234,51 @@ def sync_weather():
     print("weather: ok")
 
 
-if __name__ == "__main__":
+def sync_settings():
+    """Slideshow defaults for the frame page (URL options still win)."""
+    if ADDON:
+        write_json("settings.json", {"idle": CFG["idle"], "slide": CFG["slide"], "black": CFG["black"]})
+
+
+def install_page():
+    """Add-on only: keep the frame page in the www folder in step with the add-on version."""
+    if ADDON:
+        shutil.copyfile(os.path.join(HERE, "index.html"), os.path.join(OUT, "index.html"))
+        print(f"page: installed at /local/{os.path.basename(OUT)}/index.html")
+
+
+def run_once(icloud):
     ok = True
-    # The iCloud download only runs with --icloud (weekly automation + the dashboard button);
-    # the hourly run just refreshes the photo list, calendar and weather.
-    steps = (sync_icloud,) if "--icloud" in sys.argv else ()
-    for fn in steps + (sync_photos, sync_events, sync_weather):
+    steps = ((sync_icloud,) if icloud else ()) + (sync_photos, sync_events, sync_weather)
+    for fn in steps:
         try:
             fn()
         except Exception as ex:  # keep going: one failing shouldn't block the others
             ok = False
-            print(f"{fn.__name__} failed: {ex!r}", file=sys.stderr)
-    sys.exit(0 if ok else 1)
+            print(f"{fn.__name__} failed: {ex!r}", file=sys.stderr, flush=True)
+    return ok
+
+
+def daemon():
+    """Add-on loop: data refresh every refresh_minutes, iCloud download every icloud_hours."""
+    refresh = max(5, int(CFG["refresh_minutes"])) * 60
+    icloud_every = max(1, int(CFG["icloud_hours"])) * 3600
+    last_icloud = 0.0
+    while True:
+        now = time.time()
+        due = bool(CFG.get("icloud_album")) and now - last_icloud >= icloud_every
+        if due:
+            last_icloud = now
+        print(time.strftime("%F %T"), "refresh" + (" (+iCloud)" if due else ""), flush=True)
+        run_once(due)
+        time.sleep(refresh)
+
+
+if __name__ == "__main__":
+    sync_settings()
+    install_page()
+    if "--daemon" in sys.argv:
+        daemon()
+    # One-off run. iCloud only with --icloud (weekly automation / dashboard button); the hourly
+    # run just refreshes the photo list, calendar and weather.
+    sys.exit(0 if run_once("--icloud" in sys.argv) else 1)

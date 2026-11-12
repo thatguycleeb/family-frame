@@ -1,0 +1,38 @@
+name: Family Frame
+version: "1.0.0"
+slug: family_frame
+description: Photo slideshow, calendar and weather page for a wall-mounted tablet or relative's frame.
+url: https://github.com/thatguycleeb/family-frame
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: services
+boot: auto
+homeassistant_api: true
+map:
+  - homeassistant_config:rw
+options:
+  icloud_album: ""
+  calendars: []
+  weather: ""
+  days_ahead: 30
+  refresh_minutes: 60
+  icloud_hours: 24
+  idle_seconds: 120
+  slide_seconds: 12
+  black_minutes: 5
+  frame_folder: frame
+schema:
+  icloud_album: str?
+  calendars:
+    - str
+  weather: str?
+  days_ahead: int(1,365)
+  refresh_minutes: int(5,1440)
+  icloud_hours: int(1,720)
+  idle_seconds: int(10,3600)
+  slide_seconds: int(3,300)
+  black_minutes: int(0,1440)
+  frame_folder: match(^[A-Za-z0-9_-]+$)

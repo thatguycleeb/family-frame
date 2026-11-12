@@ -26,10 +26,10 @@ Photos dropped in via Samba ─────────────┘    │
 
 | Path | What it is |
 | --- | --- |
-| `frame/index.html` | The frame page. Plain ES5 + flexbox so it runs on Android 5's old browser. Calendar/weather view, photo slideshow, black-out, wake on touch/motion. |
-| `sync.py` | Runs inside Home Assistant OS (stdlib only). Downloads the iCloud album, strips EXIF/GPS, writes `photos.json`, `events.json`, `weather.json`. |
-| `config.example.json` | Copy to `/config/frame-sync/config.json` and fill in. |
-| `ha/` | `shell_command`, script (refresh button) and automations for Home Assistant. |
+| `family-frame/index.html` | The frame page. Plain ES5 + flexbox so it runs on Android 5's old browser. Calendar/weather view, photo slideshow, black-out, wake on touch/motion. |
+| `family-frame/` | **Home Assistant add-on** (recommended): `sync.py` (stdlib only) downloads the iCloud album, strips EXIF/GPS, writes `photos.json`, `events.json`, `weather.json`, and installs the page. Options are set in the add-on's Configuration tab. |
+| `repository.yaml` | Makes this repo an add-on repository. |
+| `config.example.json`, `ha/` | Manual (no add-on) setup: config file, `shell_command`, script and automations. |
 | `kiosk/` | Full-screen WebView kiosk app, adapted from [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard) (MIT, see `kiosk/LICENSE-wesbos`): rebuilt for Android 5.1, plus a built-in screensaver and camera motion detection. |
 
 ## Frame page options
@@ -43,15 +43,31 @@ Photos dropped in via Samba ─────────────┘    │
 | `slide=12` | 12 | Seconds per photo |
 | `black=5` | 5 | Minutes without touch/motion before the screen goes black (`0` = never) |
 
+With the add-on, the defaults for `idle`, `slide` and `black` are set in its configuration; options in the URL override them.
+
 ## Setup
 
-### 1. Home Assistant (HAOS)
+### 1a. Home Assistant add-on (recommended)
+
+1. Settings → Add-ons → Add-on store → ⋮ → Repositories → add `https://github.com/thatguycleeb/family-frame`
+   (this repo is private: for a private repo, copy the `family-frame/` folder into the `/addons`
+   share instead, and it shows up under *Local add-ons*).
+2. Install **Family Frame**, fill in the Configuration tab (iCloud album link, calendar and weather
+   entities, slideshow timings) and start it. No access token is needed.
+3. The page is at `https://<your-ha>/local/frame/index.html`. Restarting the add-on refreshes
+   everything immediately, including the iCloud album (see the add-on's Documentation tab for a
+   refresh button script).
+
+If you used the manual setup below before, remove the `frame_sync` shell_command, its script and the
+hourly/weekly automations, and stop using `/config/frame-sync`.
+
+### 1b. Home Assistant, manual (HAOS)
 
 You need file access to `/config` (Samba share or SSH add-on).
 
-1. Copy `frame/index.html` to `/config/www/frame/index.html` and create `/config/www/frame/photos/`.
+1. Copy `family-frame/index.html` to `/config/www/frame/index.html` and create `/config/www/frame/photos/`.
    If `/config/www` did not exist before, restart Home Assistant once so `/local/` is served.
-2. Copy `sync.py` to `/config/frame-sync/sync.py` and `config.example.json` to
+2. Copy `family-frame/sync.py` to `/config/frame-sync/sync.py` and `config.example.json` to
    `/config/frame-sync/config.json`. Fill in:
    - `ha_token`: a long-lived access token (ideally from a dedicated, non-admin user).
    - `calendars`, `weather`: your entity IDs.

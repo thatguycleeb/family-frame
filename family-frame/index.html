@@ -65,6 +65,7 @@
     ?idle=120   seconds without touch before the slideshow starts
     ?slide=12   seconds per photo
     ?black=5    minutes without touch/motion before the screen goes black (0 = never)
+    (defaults for these three come from settings.json, written by the add-on)
     ?screenoff=1  when going black, also turn the backlight off (Fully Kiosk only)
   Wakes on touch, and on camera motion when running in the family-frame kiosk app
   (~/photo-frame/kiosk, calls frameWake) or Fully Kiosk (motion + JavaScript interface on).
@@ -92,8 +93,16 @@
   location.search.replace(/^\?/, '').split('&').forEach(function (kv) {
     if (!kv) return; var p = kv.split('='); params[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || '');
   });
-  var IDLE = (+params.idle || 120) * 1000;
-  var SLIDE_MS = (+params.slide || 12) * 1000;
+  /* Defaults come from settings.json (written by the Home Assistant add-on); URL options win. */
+  var cfg = {};
+  try {
+    var sx = new XMLHttpRequest();
+    sx.open('GET', 'settings.json?_=' + new Date().getTime(), false);
+    sx.send();
+    if (sx.status === 200) cfg = JSON.parse(sx.responseText) || {};
+  } catch (e) {}
+  var IDLE = (+params.idle || +cfg.idle || 120) * 1000;
+  var SLIDE_MS = (+params.slide || +cfg.slide || 12) * 1000;
   var SLIDESHOW_ONLY = params.view === 'slideshow';
 
   function get(url, cb) {
@@ -225,7 +234,8 @@
   function stopShow() { $('show').className = ''; clearInterval(timer); }
 
   /* ── idle handling: calendar → slideshow (IDLE) → black (BLACK) ── */
-  var BLACK_MS = (params.black === undefined ? 5 : +params.black) * 60 * 1000;
+  var BLACK_MS = (params.black !== undefined ? +params.black
+      : cfg.black !== undefined ? +cfg.black : 5) * 60 * 1000;
   var idleT, blackT, dark = false;
   function goBlack() {
     dark = true; $('blackout').className = 'on'; stopShow();

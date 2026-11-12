@@ -1,0 +1,31 @@
+configuration:
+  icloud_album:
+    name: iCloud shared album link
+    description: "Link from Photos that opens on photos.icloud.com/shared/album/... with a download button. Leave empty to only use photos you copy in yourself."
+  calendars:
+    name: Calendars
+    description: "Calendar entity IDs to show, e.g. calendar.family."
+  weather:
+    name: Weather entity
+    description: "Weather entity for the forecast, e.g. weather.forecast_home. Leave empty to hide weather."
+  days_ahead:
+    name: Days of events
+    description: "How far ahead to list calendar events."
+  refresh_minutes:
+    name: Refresh interval (minutes)
+    description: "How often calendar, weather and the photo list are refreshed."
+  icloud_hours:
+    name: iCloud check interval (hours)
+    description: "How often the iCloud album is checked for new or removed photos."
+  idle_seconds:
+    name: Idle before slideshow (seconds)
+    description: "Default for the calendar page. Overridden by ?idle= in the URL."
+  slide_seconds:
+    name: Seconds per photo
+    description: "Default slide time. Overridden by ?slide= in the URL."
+  black_minutes:
+    name: Minutes until black screen
+    description: "0 = never. Overridden by ?black= in the URL."
+  frame_folder:
+    name: Folder name
+    description: "Published at /local/<folder>/ (files live in /config/www/<folder>). Changing it leaves the old folder behind."
