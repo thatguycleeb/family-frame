@@ -18,6 +18,25 @@ No access token needed: the add-on talks to Home Assistant through the Superviso
 | `icloud_hours` | How often to check the album (default 24) |
 | `idle_seconds`, `slide_seconds`, `black_minutes` | Slideshow defaults; `?idle=`, `?slide=`, `?black=` in the URL override them |
 | `frame_folder` | Folder under `/config/www` (default `frame`) |
+| `frames` | Extra frames, see below |
+
+## Several frames
+
+The options above describe the **main frame** at `/local/frame/index.html`. Add entries under
+`frames` for more devices, each with its own page:
+
+```yaml
+frames:
+  - name: mum
+    calendars:
+      - calendar.mum
+    weather: weather.forecast_mums_place
+    slide_seconds: 20
+```
+
+This gives `/local/frame/mum/index.html` with its own calendar and weather. Any option left out
+(`weather`, `idle_seconds`, `slide_seconds`, `black_minutes`) uses the main frame's value, and an
+empty `calendars` list falls back to the main calendars. All frames show the same photos.
 
 ## Refresh now
 

@@ -29,3 +29,6 @@ configuration:
   frame_folder:
     name: Folder name
     description: "Published at /local/<folder>/ (files live in /config/www/<folder>). Changing it leaves the old folder behind."
+  frames:
+    name: Extra frames
+    description: "More frames (e.g. a relative's) with their own page at /local/frame/<name>/index.html. Each entry: name, calendars, and optionally weather, idle_seconds, slide_seconds, black_minutes. Anything left empty uses the main settings above. Photos are shared."

@@ -101,6 +101,7 @@
     sx.send();
     if (sx.status === 200) cfg = JSON.parse(sx.responseText) || {};
   } catch (e) {}
+  var PBASE = cfg.photos_base || '';  // frames in sub-folders share the main folder's photos
   var IDLE = (+params.idle || +cfg.idle || 120) * 1000;
   var SLIDE_MS = (+params.slide || +cfg.slide || 12) * 1000;
   var SLIDESHOW_ONLY = params.view === 'slideshow';
@@ -207,7 +208,7 @@
   var photos = [], idx = 0, cur = 0, timer = null;
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function loadPhotos(cb) {
-    get('photos.json', function (err, list) {
+    get(PBASE + 'photos.json', function (err, list) {
       if (!err) photos = shuffle(list);
       $('nophotos').style.display = photos.length ? 'none' : 'flex';
       if (cb) cb();
@@ -215,7 +216,7 @@
   }
   function next() {
     if (!photos.length) return;
-    var url = 'photos/' + encodeURIComponent(photos[idx++ % photos.length]);
+    var url = PBASE + 'photos/' + encodeURIComponent(photos[idx++ % photos.length]);
     var img = new Image();
     img.onload = function () {
       var incoming = $('s' + (1 - cur)), outgoing = $('s' + cur);

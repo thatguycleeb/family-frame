@@ -39,8 +39,31 @@ def load_config():
             "idle": o.get("idle_seconds", 120),
             "slide": o.get("slide_seconds", 12),
             "black": o.get("black_minutes", 5),
+            "frames": o.get("frames", []),
         }
     return json.load(open(os.path.join(HERE, "config.json")))
+
+
+def frame_profiles():
+    """The main frame (top-level options, at /local/frame/) plus one profile per extra frame
+    (own sub-folder /local/frame/<name>/, own calendars/weather/timings; empty = same as main).
+    Photos are shared: they stay in the main folder."""
+    main = {"name": "main", "folder": OUT, "photos_base": "",
+            "calendars": CFG.get("calendars", []), "weather": CFG.get("weather", ""),
+            "idle": CFG.get("idle"), "slide": CFG.get("slide"), "black": CFG.get("black")}
+    frames = [main]
+    for f in CFG.get("frames", []):
+        name = re.sub(r"[^a-z0-9_-]", "", (f.get("name") or "").lower())
+        if not name:
+            continue
+        frames.append({
+            "name": name, "folder": os.path.join(OUT, name), "photos_base": "../",
+            "calendars": [c for c in f.get("calendars", []) if c] or main["calendars"],
+            "weather": (f.get("weather") or "").strip() or main["weather"],
+            "idle": f.get("idle_seconds") or main["idle"],
+            "slide": f.get("slide_seconds") or main["slide"],
+            "black": main["black"] if f.get("black_minutes") is None else f["black_minutes"]})
+    return frames
 
 
 CFG = load_config()
@@ -50,9 +73,9 @@ os.makedirs(PHOTOS, exist_ok=True)
 IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 
 
-def write_json(name, data):
+def write_json(name, data, folder=None):
     """Write atomically so the tablet never reads a half-written file."""
-    path = os.path.join(OUT, name)
+    path = os.path.join(folder or OUT, name)
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(data, f)
@@ -192,10 +215,10 @@ def sync_photos():
     print(f"photos: {len(names)}" + (f" (skipped {len(skipped)} HEIC - browsers can't show those)" if skipped else ""))
 
 
-def sync_events():
-    if not CFG.get("calendars"):
-        write_json("events.json", {"updated": datetime.now(timezone.utc).isoformat(), "events": []})
-        print("events: no calendars configured")
+def sync_events(fr):
+    if not fr["calendars"]:
+        write_json("events.json", {"updated": datetime.now(timezone.utc).isoformat(), "events": []}, fr["folder"])
+        print(f"events[{fr['name']}]: no calendars configured")
         return
     now = datetime.now(timezone.utc)
     qs = urllib.parse.urlencode({
@@ -203,7 +226,7 @@ def sync_events():
         "end": (now + timedelta(days=CFG.get("days_ahead", 30))).strftime("%Y-%m-%dT%H:%M:%SZ"),
     })
     events = []
-    for entity in CFG["calendars"]:
+    for entity in fr["calendars"]:
         for e in ha_request(f"/api/calendars/{entity}?{qs}"):
             events.append({
                 "title": e.get("summary", ""),
@@ -212,15 +235,15 @@ def sync_events():
                 "allDay": "date" in e["start"],
             })
     events.sort(key=lambda e: e["start"])
-    write_json("events.json", {"updated": now.isoformat(), "events": events})
-    print(f"events: {len(events)}")
+    write_json("events.json", {"updated": now.isoformat(), "events": events}, fr["folder"])
+    print(f"events[{fr['name']}]: {len(events)}")
 
 
-def sync_weather():
-    entity = CFG.get("weather")
+def sync_weather(fr):
+    entity = fr["weather"]
     if not entity:
-        write_json("weather.json", {})
-        print("weather: no entity configured")
+        write_json("weather.json", {}, fr["folder"])
+        print(f"weather[{fr['name']}]: no entity configured")
         return
     st = ha_request(f"/api/states/{entity}")
     fc = ha_request("/api/services/weather/get_forecasts?return_response",
@@ -230,29 +253,34 @@ def sync_weather():
         "temperature": st["attributes"].get("temperature"),
         "forecast": [{"datetime": f["datetime"], "condition": f["condition"],
                       "temperature": f.get("temperature")} for f in fc[:5]],
-    })
-    print("weather: ok")
+    }, fr["folder"])
+    print(f"weather[{fr['name']}]: ok")
 
 
 def sync_settings():
-    """Slideshow defaults for the frame page (URL options still win)."""
-    if ADDON:
-        write_json("settings.json", {"idle": CFG["idle"], "slide": CFG["slide"], "black": CFG["black"]})
-
-
-def install_page():
-    """Add-on only: keep the frame page in the www folder in step with the add-on version."""
-    if ADDON:
-        shutil.copyfile(os.path.join(HERE, "index.html"), os.path.join(OUT, "index.html"))
-        print(f"page: installed at /local/{os.path.basename(OUT)}/index.html")
+    """Add-on only: slideshow defaults for each frame page (URL options still win), and the
+    page itself, kept in step with the add-on version."""
+    if not ADDON:
+        return
+    for fr in frame_profiles():
+        os.makedirs(fr["folder"], exist_ok=True)
+        write_json("settings.json", {"idle": fr["idle"], "slide": fr["slide"], "black": fr["black"],
+                                     "photos_base": fr["photos_base"]}, fr["folder"])
+        shutil.copyfile(os.path.join(HERE, "index.html"), os.path.join(fr["folder"], "index.html"))
+        rel = os.path.relpath(fr["folder"], os.path.dirname(OUT))
+        print(f"page[{fr['name']}]: /local/{rel}/index.html")
 
 
 def run_once(icloud):
     ok = True
-    steps = ((sync_icloud,) if icloud else ()) + (sync_photos, sync_events, sync_weather)
-    for fn in steps:
+    steps = [(sync_icloud, ()), ] if icloud else []
+    steps.append((sync_photos, ()))
+    for fr in (frame_profiles() if ADDON else [{"name": "main", "folder": OUT,
+               "calendars": CFG.get("calendars", []), "weather": CFG.get("weather", "")}]):
+        steps += [(sync_events, (fr,)), (sync_weather, (fr,))]
+    for fn, args in steps:
         try:
-            fn()
+            fn(*args)
         except Exception as ex:  # keep going: one failing shouldn't block the others
             ok = False
             print(f"{fn.__name__} failed: {ex!r}", file=sys.stderr, flush=True)
@@ -276,7 +304,6 @@ def daemon():
 
 if __name__ == "__main__":
     sync_settings()
-    install_page()
     if "--daemon" in sys.argv:
         daemon()
     # One-off run. iCloud only with --icloud (weekly automation / dashboard button); the hourly

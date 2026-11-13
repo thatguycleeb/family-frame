@@ -1,5 +1,5 @@
 name: Family Frame
-version: "1.0.0"
+version: "1.1.0"
 slug: family_frame
 description: Photo slideshow, calendar and weather page for a wall-mounted tablet or relative's frame.
 url: https://github.com/thatguycleeb/family-frame
@@ -24,6 +24,7 @@ options:
   slide_seconds: 12
   black_minutes: 5
   frame_folder: frame
+  frames: []
 schema:
   icloud_album: str?
   calendars:
@@ -36,3 +37,11 @@ schema:
   slide_seconds: int(3,300)
   black_minutes: int(0,1440)
   frame_folder: match(^[A-Za-z0-9_-]+$)
+  frames:
+    - name: match(^[A-Za-z0-9_-]+$)
+      calendars:
+        - str
+      weather: str?
+      idle_seconds: int(10,3600)?
+      slide_seconds: int(3,300)?
+      black_minutes: int(0,1440)?
