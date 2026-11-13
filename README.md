@@ -29,7 +29,7 @@ Photos dropped in via Samba ─────────────┘    │
 | `family-frame/index.html` | The frame page. Plain ES5 + flexbox so it runs on Android 5's old browser. Calendar/weather view, photo slideshow, black-out, wake on touch/motion. |
 | `family-frame/` | **Home Assistant add-on** (recommended): `sync.py` (stdlib only) downloads the iCloud album, strips EXIF/GPS, writes `photos.json`, `events.json`, `weather.json`, and installs the page. Options are set in the add-on's Configuration tab. |
 | `repository.yaml` | Makes this repo an add-on repository. |
-| `config.example.json`, `ha/` | Manual (no add-on) setup: config file, `shell_command`, script and automations. |
+| `ha/` | Manual (no add-on) setup: config file, `shell_command`, script and automations. |
 | `kiosk/` | Full-screen WebView kiosk app, adapted from [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard) (MIT, see `kiosk/LICENSE-wesbos`): rebuilt for Android 5.1, plus a built-in screensaver and camera motion detection. |
 
 ## Frame page options
@@ -67,7 +67,7 @@ You need file access to `/config` (Samba share or SSH add-on).
 
 1. Copy `family-frame/index.html` to `/config/www/frame/index.html` and create `/config/www/frame/photos/`.
    If `/config/www` did not exist before, restart Home Assistant once so `/local/` is served.
-2. Copy `family-frame/sync.py` to `/config/frame-sync/sync.py` and `config.example.json` to
+2. Copy `family-frame/sync.py` to `/config/frame-sync/sync.py` and `ha/frame-sync.example.json` to
    `/config/frame-sync/config.json`. Fill in:
    - `ha_token`: a long-lived access token (ideally from a dedicated, non-admin user).
    - `calendars`, `weather`: your entity IDs.

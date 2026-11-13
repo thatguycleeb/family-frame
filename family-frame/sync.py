@@ -27,7 +27,7 @@ def load_config():
     if ADDON:
         o = json.load(open(OPTIONS))
         return {
-            "out_dir": "/config/www/" + (o.get("frame_folder") or "frame").strip("/"),
+            "out_dir": "/homeassistant/www/" + (o.get("frame_folder") or "frame").strip("/"),
             "icloud_album": (o.get("icloud_album") or "").strip(),
             "ha_url": "http://supervisor/core",
             "ha_token": os.environ.get("SUPERVISOR_TOKEN", ""),
